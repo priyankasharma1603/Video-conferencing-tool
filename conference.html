@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Conference</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h2>ConnectMeeting</h2>
+
+    <div class="video-container">
+      <img src="connect.png" alt="Video Conference" class="video-image">
+    </div>
+
+    <div class="conference-options">
+      <button id="join-button" class="btn btn-primary" onclick="openJoinForm()">Join the Meeting</button>
+      <button class="btn btn-secondary">Invite for Meeting</button>
+    </div>
+    
+  </div>
+
+  <div id="join-form" style="display: none;">
+    <h3>Join Meeting</h3>
+    <div id="join-options-link" style="display: none;">
+      <h4>Join via Link</h4>
+      <label for="link-input">Link:</label>
+      <input type="text" id="link-input">
+    </div>
+
+    <div id="join-options-code" style="display: none;">
+      <h4>Join via Code</h4>
+      <label for="code-input">Code:</label>
+      <input type="text" id="code-input">
+    </div>
+
+    <button class="btn btn-primary" onclick="joinMeeting()">Join</button>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

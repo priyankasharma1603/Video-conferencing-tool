@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Video Conference with Text Chat</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+  <style>
+    #local-video {
+      width: 50%;
+      height: auto;
+    }
+
+    .remote-video {
+      width: 150px;
+      height: 75px;
+      margin-top: 20px;
+    }
+
+    #messages {
+      height: 75px;
+      width: 610px;
+      overflow-y: scroll;
+      margin-top: 20px;
+      padding: 10px;
+      border: 1px solid #ccc;
+    }
+
+    #message-input {
+      width: 55%;
+      margin-top: 10px;
+    }
+
+    .icon-container {
+      display: flex;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .icon-container i {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+ 
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="container">
+  <h1>Video Conference with Text Chat</h1>
+  <div class="icon-container">
+    <i id="camera-icon" class="fas fa-video"></i>
+    <i id="audio-icon" class="fas fa-microphone"></i>
+  </div>
+  <video id="local-video" autoplay muted></video>
+  <div id="remote-videos"></div>
+  <div id="chat-container">
+    <div id="messages"></div>
+    <input type="text" id="message-input" placeholder="Type your message..." />
+</div>
+
+<script src="https://kit.fontawesome.com/your-font-awesome-kit.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/simple-peer@9.2.1"></script>
+<script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+<script>
+  const localVideo = document.getElementById('local-video');
+  const remoteVideos = document.getElementById('remote-videos');
+  const messageInput = document.getElementById('message-input');
+  const messagesContainer = document.getElementById('messages');
+  const cameraIcon = document.getElementById('camera-icon');
+  const audioIcon = document.getElementById('audio-icon');
+
+  // Generate a unique ID for the user
+  const userId = Math.random().toString(36).substring(7);
+
+  // Initialize the signaling socket
+  const socket = io();
+
+  // Get media stream from user's camera and display in the local video element
+  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    .then(function (stream) {
+      localVideo.srcObject = stream;
+
+      // Emit the 'join' event to the signaling server with the user ID
+      socket.emit('join', userId);
+
+      // Function to create a new video element for each remote participant
+      function createVideoElement(userId) {
+        const videoElement = document.createElement('video');
+        videoElement.id = 'remote-video-' + userId;
+        videoElement.className = 'remote-video';
+        videoElement.autoplay = true;
+        remoteVideos.appendChild(videoElement);
+        return videoElement;
+      }
+
+      // Function to remove the video element of a disconnected participant
+      function removeVideoElement(userId) {
+        const videoElement = document.getElementById('remote-video-' + userId);
+        if (videoElement) {
+          videoElement.remove();
+        }
+      }
+
+      // Function to handle incoming signaling messages
+      function handleSignalingMessage(message) {
+        const { from, type, data } = message;
+
+        // Create a new SimplePeer instance for each incoming connection
+        const peer = new SimplePeer({ initiator: type === 'offer', stream });
+
+        // Event handler for receiving ice candidates from the peer
+        peer.on('signal', function (signal) {
+          socket.emit('signal', { from: userId, to: from, type: 'candidate', data: signal });
+        });
+
+        // Event handler for receiving the remote stream
+        peer.on('stream', function (stream) {
+          const videoElement = createVideoElement(from);
+          videoElement.srcObject = stream;
+        });
+
+        // Event handler for handling the initial connection establishment
+        if (type === 'offer') {
+          peer.signal(data);
+        }
+
+        // Store the peer instance in a map for future reference
+        peers.set(from, peer);
+      }
+
+      // Map to store SimplePeer instances for each connected peer
+      const peers = new Map();
+
+      // Event handler for handling signaling messages from the server
+      socket.on('signal', function (message) {
+        const { from, to, type, data } = message;
+
+        // Handle offer and answer messages
+        if (type === 'offer' || type === 'answer') {
+          if (to === userId) {
+            handleSignalingMessage(message);
+          }
+        }
+
+        // Handle ice candidate messages
+        if (type === 'candidate') {
+          if (peers.has(from)) {
+            const peer = peers.get(from);
+            peer.signal(data);
+          }
+        }
+
+        // Handle user disconnection
+        if (type === 'user-disconnected') {
+          removeVideoElement(from);
+          if (peers.has(from)) {
+            const peer = peers.get(from);
+            peer.destroy();
+            peers.delete(from);
+          }
+        }
+      });
+
+      // Event handler for user disconnection
+      socket.on('user-connected', function (userId) {
+        const videoElement = createVideoElement(userId);
+
+        // Create a new SimplePeer instance as the initiator
+        const peer = new SimplePeer({ initiator: true, stream });
+
+        // Event handler for receiving ice candidates from the peer
+        peer.on('signal', function (signal) {
+          socket.emit('signal', { from: userId, to: userId, type: 'offer', data: signal });
+        });
+
+        // Event handler for receiving the remote stream
+        peer.on('stream', function (stream) {
+          videoElement.srcObject = stream;
+        });
+
+        // Store the peer instance in the map
+        peers.set(userId, peer);
+      });
+
+      // Event handler for user disconnection
+      socket.on('user-disconnected', function (userId) {
+        removeVideoElement(userId);
+        if (peers.has(userId)) {
+          const peer = peers.get(userId);
+          peer.destroy();
+          peers.delete(userId);
+        }
+      });
+
+      // Event handler for sending chat messages
+      messageInput.addEventListener('keydown', function (event) {
+        if (event.keyCode === 13 && messageInput.value.trim() !== '') {
+          const message = messageInput.value;
+          socket.emit('chat-message', message);
+          messageInput.value = '';
+        }
+      });
+
+      // Event handler for receiving chat messages
+      socket.on('chat-message', function (data) {
+        const { sender, message } = data;
+        const messageElement = document.createElement('div');
+        messageElement.textContent = sender + ': ' + message;
+        messagesContainer.appendChild(messageElement);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      });
+
+      // Event handler for toggling camera on/off
+      cameraIcon.addEventListener('click', function () {
+        const videoTracks = stream.getVideoTracks();
+        if (videoTracks.length > 0) {
+          videoTracks[0].enabled = !videoTracks[0].enabled;
+          cameraIcon.classList.toggle('fa-video');
+          cameraIcon.classList.toggle('fa-video-slash');
+        }
+      });
+
+      // Event handler for toggling audio on/off
+      audioIcon.addEventListener('click', function () {
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          audioTracks[0].enabled = !audioTracks[0].enabled;
+          audioIcon.classList.toggle('fa-microphone');
+          audioIcon.classList.toggle('fa-microphone-slash');
+        }
+      });
+    })
+    .catch(function (error) {
+      console.error('Error accessing the camera: ', error);
+    });
+</script>
+</body>
+</html>
